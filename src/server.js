@@ -1,5 +1,6 @@
 const express = require('express');
-const bcrypt = require('bcrypt')
+const jwt = require('jsonwebtoken')
+const bcrypt = require('bcrypt');
 const dotenv = require('dotenv');
 
 dotenv.config();
@@ -44,7 +45,7 @@ app.post('/users/singup', async (request, response) => {
     }
 
     if (password.length < 6) {
-        return response.status(422).json({ message: 'password needs minimum 6 characters!' })
+        return response.status(422).json({ message: 'password must have at least6 characters!' })
     }
 
     if (!cel) {
@@ -52,7 +53,7 @@ app.post('/users/singup', async (request, response) => {
     }
 
     if (cel.length !== 9) {
-        return response.status(422).json({ message: 'celNumber needs 9 characters!' })
+        return response.status(422).json({ message: 'celNumber must have at least 9 characters!' })
     }
 
     const salt = await bcrypt.genSalt(14);
@@ -67,6 +68,57 @@ app.post('/users/singup', async (request, response) => {
         return response.status(500).json({ message: `Error: ${error}` })
     }
 
+});
+
+app.post('/user/singin', async (request, response) => {
+    const { email, password } = request.body;
+
+    if (!email) {
+        return response.status(422).json({ message: 'email is required!' })
+    }
+
+    if (!password) {
+        return response.status(422).json({ message: 'password is required!' })
+    }
+
+    if (password.length < 6) {
+        return response.status(422).json({ message: 'password must have at least 6 characters!' })
+    }
+
+    const user = await pool.query('SELECT * FROM users WHERE email = ($1)', [email]);
+
+    if (!user) {
+        return response.status(404).json('user was not found!')
+    }
+
+    const checkPassword = await bcrypt.compare(password, user.rows[0].password);
+
+    if (!checkPassword) {
+        return response.status(404).json({ message: 'password is wrong' })
+    }
+
+    try {
+        const secret = process.env.SECRET;
+        const token = jwt.sign(
+            {
+                id: user.rows[0].id
+            },
+            secret
+        )
+
+        const userData = {
+            user: {
+                ...user.rows[0],
+            },
+            token
+        }
+
+        return response.status(200).json(userData)
+
+    } catch (error) {
+        console.log(error)
+        return response.status(500).json('Error in the server')
+    }
 })
 
 
