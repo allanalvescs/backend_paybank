@@ -2,6 +2,9 @@ const express = require('express');
 const jwt = require('jsonwebtoken')
 const bcrypt = require('bcrypt');
 const dotenv = require('dotenv');
+const cors = require('cors');
+
+
 
 dotenv.config();
 
@@ -12,7 +15,14 @@ const port = 3000;
 
 const app = express();
 
+
 app.use(express.json());
+
+app.use((req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*")
+    app.use(cors())
+    next()
+})
 
 app.get('/', (_, response) => {
     return response.status(201).json({ message: 'Initial API', stack: 'Node JS', database: 'PostgreSQL' })
