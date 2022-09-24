@@ -95,19 +95,15 @@ app.post('/user/singin', async (request, response) => {
         return response.status(422).json({ message: 'password must have at least 6 characters!' })
     }
 
-    const user = await pool.query('SELECT * FROM users WHERE email = ($1)', [email]);
-
-    if (!user) {
-        return response.status(404).json('user was not found!')
-    }
-
-    const checkPassword = await bcrypt.compare(password, user.rows[0].password);
-
-    if (!checkPassword) {
-        return response.status(404).json({ message: 'password is wrong' })
-    }
 
     try {
+        const user = await pool.query('SELECT * FROM users WHERE email = ($1)', [email]);
+
+        const checkPassword = await bcrypt.compare(password, user.rows[0].password);
+
+        if (!checkPassword) {
+            return response.status(404).json({ message: 'password is wrong' })
+        }
         const secret = process.env.SECRET;
         const token = jwt.sign(
             {
@@ -127,8 +123,71 @@ app.post('/user/singin', async (request, response) => {
 
     } catch (error) {
         console.log(error)
-        return response.status(500).json('Error in the server')
+        return response.status(500).json(`Error in the request ${error}`)
     }
+});
+
+app.post('/loan', async (request, response) => {
+    const { uf, data_born, loan, value_month } = request.body;
+    let percentual = 0
+    if (uf === "MG") {
+        percentual = 0.01
+    }
+
+    if (uf === "SP") {
+        percentual = 0.008
+    }
+
+    if (uf === "RJ") {
+        percentual = 0.009
+    }
+
+    if (uf === "ES") {
+        percentual = 0.0111
+    }
+
+    let valueloan = loan;
+    let rate_month = value_month;
+
+    const dataLoans = []
+
+    while (valueloan > 0) {
+
+        let loanFess = (valueloan + (percentual * valueloan));
+        let fees = percentual * valueloan
+
+
+        const tableItem = {
+            valueloan: Number(valueloan).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+            fees: Number(fees).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+            loanFess: Number(loanFess).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+            value_portion: Number(rate_month).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+        }
+
+        dataLoans.push(tableItem);
+
+
+
+        if (valueloan > rate_month) {
+            valueloan = (valueloan + fees) - rate_month
+        } else {
+            rate_month = valueloan
+            valueloan = valueloan - valueloan
+        }
+
+        if (rate_month > valueloan) {
+            rate_month = valueloan
+        }
+    }
+
+
+    return response.status(200).json({
+        uf,
+        data_born,
+        loan,
+        value_month,
+        dataLoans
+    })
 })
 
 
