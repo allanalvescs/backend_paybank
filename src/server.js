@@ -127,7 +127,29 @@ app.post('/user/singin', async (request, response) => {
     }
 });
 
-app.post('/loan', async (request, response) => {
+
+function middlewareCheckToken(request, response, next) {
+    const authHeader = request.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token) {
+        return response.status(401).json({ message: 'Token is missed' })
+    }
+
+    try {
+        const secret = process.env.SECRET
+
+        jwt.verify(token, secret)
+
+        next()
+    } catch (error) {
+        return response.status(400).json({ message: 'Unauthorization Token' })
+    }
+
+}
+
+//Private Route
+app.post('/loan', middlewareCheckToken, async (request, response) => {
     const { uf, data_born, loan, value_month } = request.body;
     let percentual = 0
     if (uf === "MG") {
@@ -146,43 +168,43 @@ app.post('/loan', async (request, response) => {
         percentual = 0.0111
     }
 
-    let valueloan = loan;
+    let debit_balance = loan;
     let rate_month = value_month;
 
     const dataLoans = []
 
-    while (valueloan > 0) {
+    while (debit_balance > 0) {
 
-        let loanFess = (valueloan + (percentual * valueloan));
-        let fees = percentual * valueloan
+        let adjusted_debt_balance = (debit_balance + (percentual * debit_balance));
+        let fees = percentual * debit_balance
 
 
         const tableItem = {
-            valueloan: Number(valueloan).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
-            fees: Number(fees).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
-            loanFess: Number(loanFess).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
-            value_portion: Number(rate_month).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+            debit_balance: Number(debit_balance),
+            fees: Number(fees),
+            adjusted_debt_balance: Number(adjusted_debt_balance),
+            value_rate: Number(rate_month),
         }
 
         dataLoans.push(tableItem);
 
 
 
-        if (valueloan > rate_month) {
-            valueloan = (valueloan + fees) - rate_month
+        if (debit_balance > rate_month) {
+            debit_balance = (debit_balance + fees) - rate_month
         } else {
-            rate_month = valueloan
-            valueloan = valueloan - valueloan
+            rate_month = debit_balance
+            debit_balance = debit_balance - debit_balance
         }
 
-        if (rate_month > valueloan) {
-            rate_month = valueloan
+        if (rate_month > debit_balance) {
+            rate_month = debit_balance
         }
     }
 
 
     return response.status(200).json({
-        uf,
+        percentual: percentual * 100,
         data_born,
         loan,
         value_month,
