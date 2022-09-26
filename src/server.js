@@ -4,11 +4,10 @@ const bcrypt = require('bcrypt');
 const dotenv = require('dotenv');
 const cors = require('cors');
 
-
-
 dotenv.config();
 
 const pool = require('./connect');
+const RowTable = require('./Models/rowLoan');
 pool.connect();
 
 const port = 3000;
@@ -24,7 +23,7 @@ app.use((req, res, next) => {
     next()
 })
 
-app.get('/', (_, response) => {
+app.get('/', (request, response) => {
     return response.status(201).json({ message: 'Initial API', stack: 'Node JS', database: 'PostgreSQL' })
 });
 
@@ -151,65 +150,64 @@ function middlewareCheckToken(request, response, next) {
 //Private Route
 app.post('/loan', middlewareCheckToken, async (request, response) => {
     const { uf, data_born, loan, value_month } = request.body;
-    let percentual = 0
-    if (uf === "MG") {
-        percentual = 0.01
-    }
-
-    if (uf === "SP") {
-        percentual = 0.008
-    }
-
-    if (uf === "RJ") {
-        percentual = 0.009
-    }
-
-    if (uf === "ES") {
-        percentual = 0.0111
-    }
-
-    let debit_balance = loan;
-    let rate_month = value_month;
-
-    const dataLoans = []
-
-    while (debit_balance > 0) {
-
-        let adjusted_debt_balance = (debit_balance + (percentual * debit_balance));
-        let fees = percentual * debit_balance
 
 
-        const tableItem = {
-            debit_balance: Number(debit_balance),
-            fees: Number(fees),
-            adjusted_debt_balance: Number(adjusted_debt_balance),
-            value_rate: Number(rate_month),
+    try {
+        const percentual = await pool.query('SELECT * FROM rate_uf WHERE uf = ($1)', [uf]);
+
+        let debit_balance = loan;
+        let rate_month = value_month;
+
+        const dataLoans = []
+
+        while (debit_balance > 0) {
+
+            let adjusted_debt_balance = (debit_balance + (percentual.rows[0].rate * debit_balance));
+            let fees = percentual.rows[0].rate * debit_balance
+
+            const tableItem = new RowTable(Number(debit_balance), Number(fees), Number(adjusted_debt_balance), Number(rate_month))
+
+            dataLoans.push(tableItem);
+
+
+            if (debit_balance > rate_month) {
+                debit_balance = (debit_balance + fees) - rate_month
+            } else {
+                rate_month = debit_balance
+                debit_balance = debit_balance - debit_balance
+            }
+
+            if (rate_month > debit_balance) {
+                rate_month = debit_balance
+            }
         }
 
-        dataLoans.push(tableItem);
-
-
-
-        if (debit_balance > rate_month) {
-            debit_balance = (debit_balance + fees) - rate_month
-        } else {
-            rate_month = debit_balance
-            debit_balance = debit_balance - debit_balance
-        }
-
-        if (rate_month > debit_balance) {
-            rate_month = debit_balance
-        }
+        return response.status(200).json({
+            percentual: percentual.rows[0].rate * 100,
+            data_born,
+            loan,
+            value_month,
+            dataLoans
+        })
+    } catch (error) {
+        console.log(error)
+        response.json({ message: error })
     }
 
+})
 
-    return response.status(200).json({
-        percentual: percentual * 100,
-        data_born,
-        loan,
-        value_month,
-        dataLoans
-    })
+app.get('/loan/:uf', middlewareCheckToken, async (request, response) => {
+    const { uf } = request.params
+
+    try {
+        const percentual = await pool.query('SELECT * FROM rate_uf WHERE uf = ($1)', [uf])
+
+        return response.json(percentual.rows[0])
+
+    } catch (error) {
+        console.log(error)
+        response.json({ message: error })
+    }
 })
 
 
