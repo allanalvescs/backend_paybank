@@ -7,7 +7,14 @@ const cors = require('cors');
 dotenv.config();
 
 const pool = require('./connect');
+
 const RowTable = require('./Models/rowLoan');
+
+const validate = require('./middlewares/validate');
+
+const { UserSchema, singInSchema } = require('./Schemas/userSchema');
+const CheckToken = require('./middlewares/Authenticated');
+
 pool.connect();
 
 const port = 3000;
@@ -27,43 +34,8 @@ app.get('/', (request, response) => {
     return response.status(201).json({ message: 'Initial API', stack: 'Node JS', database: 'PostgreSQL' })
 });
 
-app.get('/users', async (request, response) => {
-    try {
-        const users = await pool.query('SELECT * FROM users');
-
-        return response.status(201).json(users.rows)
-
-    } catch (error) {
-        return response.status(400).json({ message: `Error: ${error}` })
-    }
-});
-
-app.post('/users/singup', async (request, response) => {
+app.post('/users/singup', validate(UserSchema), async (request, response) => {
     const { name, email, password, cel } = request.body
-
-    if (!name) {
-        return response.status(422).json({ message: 'name is required!' })
-    }
-
-    if (!email) {
-        return response.status(422).json({ message: 'email is required!' })
-    }
-
-    if (!password) {
-        return response.status(422).json({ message: 'password is required!' })
-    }
-
-    if (password.length < 6) {
-        return response.status(422).json({ message: 'password must have at least6 characters!' })
-    }
-
-    if (!cel) {
-        return response.status(422).json({ message: 'celNumber is required!' })
-    }
-
-    if (cel.length !== 9) {
-        return response.status(422).json({ message: 'celNumber must have at least 9 characters!' })
-    }
 
     const salt = await bcrypt.genSalt(14);
     const passwordHash = await bcrypt.hash(password, salt);
@@ -79,21 +51,8 @@ app.post('/users/singup', async (request, response) => {
 
 });
 
-app.post('/user/singin', async (request, response) => {
+app.post('/user/singin', validate(singInSchema), async (request, response) => {
     const { email, password } = request.body;
-
-    if (!email) {
-        return response.status(422).json({ message: 'email is required!' })
-    }
-
-    if (!password) {
-        return response.status(422).json({ message: 'password is required!' })
-    }
-
-    if (password.length < 6) {
-        return response.status(422).json({ message: 'password must have at least 6 characters!' })
-    }
-
 
     try {
         const user = await pool.query('SELECT * FROM users WHERE email = ($1)', [email]);
@@ -126,29 +85,20 @@ app.post('/user/singin', async (request, response) => {
     }
 });
 
-
-function middlewareCheckToken(request, response, next) {
-    const authHeader = request.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-
-    if (!token) {
-        return response.status(401).json({ message: 'Token is missed' })
-    }
-
-    try {
-        const secret = process.env.SECRET
-
-        jwt.verify(token, secret)
-
-        next()
-    } catch (error) {
-        return response.status(400).json({ message: 'Unauthorization Token' })
-    }
-
-}
-
 //Private Route
-app.post('/loan', middlewareCheckToken, async (request, response) => {
+app.get('/users', CheckToken, async (request, response) => {
+    try {
+        const users = await pool.query('SELECT * FROM users');
+
+        return response.status(201).json(users.rows)
+
+    } catch (error) {
+        return response.status(400).json({ message: `Error: ${error}` })
+    }
+});
+
+
+app.post('/loan', CheckToken, async (request, response) => {
     const { uf, data_born, loan, value_month } = request.body;
 
 
@@ -196,7 +146,7 @@ app.post('/loan', middlewareCheckToken, async (request, response) => {
 
 })
 
-app.get('/loan/:uf', middlewareCheckToken, async (request, response) => {
+app.get('/loan/:uf', CheckToken, async (request, response) => {
     const { uf } = request.params
 
     try {
